@@ -1,0 +1,150 @@
+[Slide 1]
+Title: MLP SHAP Dashboard
+Subtitle: Interactive Neural Network Visualization & Explanation Tool
+
+[Slide 2 - Overview]
+Title: Overview
+Bullet Points:
+• Interactive Neural Network Visualization
+• SHAP (SHapley Additive exPlanations) Integration
+• Real-time Model Performance Analysis
+• Customizable Architecture & Parameters
+• Multiple Dataset Support
+
+[Slide 3 - Key Features]
+Title: Key Features
+Bullet Points:
+• 🧠 Interactive Neural Network Architecture
+• 📊 Real-time Performance Metrics
+• 🎯 SHAP Value Explanations
+• 🔄 Dynamic Parameter Tuning
+• 📈 Live Training Visualization
+
+[Slide 4 - Supported Datasets]
+Title: Supported Datasets
+Content:
+• Breast Cancer Dataset
+• Iris Dataset
+• Wine Dataset
+
+Subheading: Automatic Processing:
+• Preprocessing
+• Scaling
+• Train/Test Split
+
+[Slide 5 - Neural Network Architecture]
+Title: Neural Network Architecture
+Subheading: Customizable Components:
+1. Number of Hidden Layers (1-3)
+2. Nodes per Layer (5-200)
+3. Activation Functions
+   - ReLU
+   - Tanh
+   - Logistic
+4. Learning Rate
+5. Max Iterations
+
+[Slide 6 - Visualization Features]
+Title: Visualization Features
+Subheading: Network Graph
+• Color-coded nodes
+  - Green: Input layer
+  - Orange: Hidden layers
+  - Red: Output layer
+• Weight visualization
+  - Line thickness: Weight magnitude
+  - Color: Weight sign (Red/Blue)
+• Interactive tooltips
+
+[Slide 7 - Performance Analysis]
+Title: Performance Analysis
+Subheading 1: Real-time Metrics
+• Training Accuracy
+• Testing Accuracy
+• Loss Curves
+• Convergence Status
+
+Subheading 2: Automated Warnings
+• Overfitting Detection
+• Underfitting Detection
+• Training Progress Indicators
+
+[Slide 8 - SHAP Integration]
+Title: SHAP Integration
+Subheading 1: Feature Importance
+• Global model interpretability
+• Local prediction explanations
+• Feature contribution analysis
+
+Subheading 2: Visualization Types
+• Summary plots
+• Waterfall plots
+• Force plots
+
+[Slide 9 - Technical Implementation]
+Title: Technical Implementation
+Subheading: Core Components
+1. Streamlit Web Interface
+2. Scikit-learn MLPClassifier
+3. SHAP Explainer
+4. Graphviz Visualization
+
+[Slide 10 - Architecture Details]
+Title: Architecture Details
+Code Example:
+def visualize_neural_network(
+    num_features,
+    hidden_layers,
+    num_classes,
+    model=None
+)
+
+Key Points:
+• Directed Acyclic Graph (DAG)
+• Left-to-right hierarchical layout
+• Dynamic weight visualization
+• Interactive node inspection
+
+[Slide 11 - Performance Optimizations]
+Title: Performance Optimizations
+Content:
+1. Vectorized Operations
+2. Memory Management
+   • Session state utilization
+   • Efficient data handling
+3. Scalable Visualizations
+4. Background Processing
+
+[Slide 12 - Best Practices & Usage]
+Title: Best Practices & Usage
+1. Start Simple
+   • Single hidden layer
+   • Moderate number of nodes
+   • Default learning rate
+
+2. Monitor & Adjust
+   • Watch training metrics
+   • Check for overfitting
+   • Adjust parameters as needed
+
+3. Interpret Results
+   • Use SHAP values
+   • Analyze feature importance
+   • Validate predictions
+
+[Slide 13 - Future Enhancements]
+Title: Future Enhancements
+Bullet Points:
+1. Additional Datasets
+2. More Activation Functions
+3. Advanced Visualization Options
+4. Extended SHAP Analysis
+5. Model Export Capabilities
+
+[Slide 14 - Thank You!]
+Title: Thank You!
+Subheading: Get Started:
+1. Clone the repository
+2. Install dependencies
+3. Run `streamlit run app.py`
+4. Explore and learn! 
