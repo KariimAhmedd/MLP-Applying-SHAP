@@ -22,8 +22,8 @@ An interactive dashboard for visualizing and understanding Multi-Layer Perceptro
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/mlp_shap_dashboard.git
-cd mlp_shap_dashboard
+git clone https://github.com/KariimAhmedd/MLP-Applying-SHAP.git
+cd MLP-Applying-SHAP
 ```
 
 2. Create a virtual environment (recommended):
@@ -107,4 +107,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - SHAP library for model interpretability
 - Streamlit for the interactive web interface
 - PyTorch for deep learning capabilities
-- scikit-learn for data processing utilities 
+- scikit-learn for data processing utilities
