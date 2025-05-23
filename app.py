@@ -46,6 +46,79 @@ from sklearn.metrics import confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
 
+# Detect dataset patterns and suggest appropriate class names
+def suggest_class_names(df, filename=""):
+    """
+    Analyzes a dataset and suggests appropriate class names based on patterns
+    """
+    # Initialize with default class names
+    class_names = {}
+    target = df.iloc[:, -1]
+    unique_classes = np.unique(target)
+    num_classes = len(unique_classes)
+    
+    # Analyze target variable name for clues
+    target_name = df.columns[-1].lower()
+    target_values = [str(v).lower() for v in target.unique()]
+    
+    # Check if target already has meaningful string values
+    if target.dtype == 'object' or target.dtype.name == 'category':
+        # Target might already have meaningful names
+        for i, cls in enumerate(unique_classes):
+            if isinstance(cls, str):
+                class_names[i] = cls.title()  # Capitalize first letter
+            else:
+                class_names[i] = f"Class {i}"
+        return class_names, "Using existing categorical values as class names"
+    
+    # Binary classification scenarios
+    if num_classes == 2:
+        # Check for common binary classification patterns
+        binary_patterns = [
+            # Format: (keywords, class_0_name, class_1_name)
+            (['yes', 'no', 'y', 'n'], "No", "Yes"),
+            (['true', 'false', 't', 'f'], "False", "True"),
+            (['subscribe', 'deposit', 'purchase', 'buy'], "No Subscription", "Subscribed"),
+            (['fraud', 'scam', 'anomaly'], "Normal", "Fraudulent"),
+            (['default', 'loan', 'credit', 'payment'], "No Default", "Default"),
+            (['churn', 'exit', 'retention', 'cancel'], "Retained", "Churned"),
+            (['disease', 'diabetes', 'cancer', 'tumor', 'sick', 'health'], "Negative", "Positive"),
+            (['spam', 'ham', 'email', 'message'], "Not Spam", "Spam"),
+            (['gender', 'sex', 'male', 'female', 'm', 'f'], "Female", "Male"),
+            (['approve', 'accept', 'reject', 'decline'], "Rejected", "Approved"),
+            (['pass', 'fail', 'exam', 'test', 'grade'], "Failed", "Passed")
+        ]
+        
+        # Check if target name or values match any pattern
+        for keywords, name_0, name_1 in binary_patterns:
+            if any(kw in target_name for kw in keywords) or any(kw in str(v).lower() for kw in keywords for v in target_values):
+                return {0: name_0, 1: name_1}, f"Based on '{target_name}' patterns"
+                
+        # Default binary names
+        return {0: "Negative", 1: "Positive"}, "Default binary classification labels"
+    
+    # Multi-class scenarios
+    elif num_classes <= 10:
+        # Check for common multi-class patterns
+        
+        # Check if it's potentially a rating system
+        if any(word in target_name for word in ['rating', 'score', 'star', 'grade', 'rank']):
+            class_names = {i: f"{i+1} Star" if i < 5 else f"{i+1} Stars" for i in range(num_classes)}
+            return class_names, "Rating scale detected"
+        
+        # For 3-5 classes, check if it's a sentiment scale
+        if 3 <= num_classes <= 5 and any(word in target_name for word in ['sentiment', 'satisfaction', 'opinion', 'feel']):
+            if num_classes == 3:
+                return {0: "Negative", 1: "Neutral", 2: "Positive"}, "Sentiment scale detected"
+            elif num_classes == 5:
+                return {0: "Very Negative", 1: "Negative", 2: "Neutral", 3: "Positive", 4: "Very Positive"}, "Detailed sentiment scale detected"
+    
+    # Default: generic class names
+    for i, cls in enumerate(unique_classes):
+        class_names[i] = f"Class {i}"
+    
+    return class_names, "Default classification labels"
+
 # Check device availability and set device
 device = "cpu"
 if torch.backends.mps.is_available() and torch.backends.mps.is_built():
@@ -106,6 +179,13 @@ class TorchMLP(torch.nn.Module):
 
     def predict(self, X):
         """Predict class labels"""
+        # Convert to numpy array if X is a pandas DataFrame/Series
+        if hasattr(X, 'values'):
+            X = X.values
+        
+        # Ensure array is of correct type
+        X = np.array(X, dtype=np.float32)
+        
         self.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X).to(device)
@@ -115,6 +195,13 @@ class TorchMLP(torch.nn.Module):
 
     def predict_proba(self, X):
         """Predict class probabilities"""
+        # Convert to numpy array if X is a pandas DataFrame/Series
+        if hasattr(X, 'values'):
+            X = X.values
+        
+        # Ensure array is of correct type
+        X = np.array(X, dtype=np.float32)
+        
         self.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X).to(device)
@@ -122,6 +209,16 @@ class TorchMLP(torch.nn.Module):
             return outputs.cpu().numpy()
 
 def train_torch_model(X_train, y_train, hidden_layers, num_epochs=100, batch_size=32):
+    # Convert data to numpy arrays if they are pandas Series/DataFrame
+    if hasattr(X_train, 'values'):
+        X_train = X_train.values
+    if hasattr(y_train, 'values'):
+        y_train = y_train.values
+    
+    # Ensure arrays are of correct type
+    X_train = np.array(X_train, dtype=np.float32)
+    y_train = np.array(y_train, dtype=np.int64)
+    
     # Convert data to PyTorch tensors
     X_train_tensor = torch.FloatTensor(X_train).to(device)
     y_train_tensor = torch.LongTensor(y_train).to(device)
@@ -320,12 +417,59 @@ if dataset_source == "Built-in":
     num_features = X.shape[1]
     num_classes = len(np.unique(y))
     
+    # Show success message with dataset information
+    st.sidebar.success(f"""
+    Model initialized successfully:
+    - Features: {num_features}
+    - Samples: {X.shape[0]}
+    - Classes: {', '.join(data.target_names)}
+    """)
+    
     # 3. Preprocessing & Training
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_scaled = X_scaled.astype(np.float32)
     
+    # Store the fitted scaler in session state for later use
+    st.session_state['scaler'] = scaler
+    
+    # Ensure arrays are numpy arrays
+    X_scaled = np.array(X_scaled, dtype=np.float32)
+    y = np.array(y, dtype=np.int32)
+    
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+    # Store necessary objects in session state
+    st.session_state['data'] = data
+    st.session_state['X'] = X
+    st.session_state['y'] = y
+    st.session_state['X_train'] = X_train
+    st.session_state['X_test'] = X_test
+    st.session_state['y_train'] = y_train
+    st.session_state['y_test'] = y_test
+    st.session_state['num_features'] = num_features
+    st.session_state['hidden_layers'] = []
+    st.session_state['num_classes'] = num_classes
+
+    # Store class names/meanings for interpretability
+    if hasattr(data, 'target_names') and len(data.target_names) > 0:
+        st.session_state['class_names'] = {i: name for i, name in enumerate(data.target_names)}
+    elif dataset_name == "Breast Cancer":
+        st.session_state['class_names'] = {0: "Malignant", 1: "Benign"}
+    elif dataset_name == "Iris":
+        st.session_state['class_names'] = {0: "Setosa", 1: "Versicolor", 2: "Virginica"}
+    elif dataset_name == "Wine":
+        st.session_state['class_names'] = {0: "Wine Type 1", 1: "Wine Type 2", 2: "Wine Type 3"}
+
+    # Allow users to provide class names for better interpretability
+    st.sidebar.write("📝 **Define Class Names for Better Interpretability**")
+    class_names = {}
+    for cls in np.unique(y):
+        name = st.sidebar.text_input(f"Name for Class {cls}:", value=f"Class {cls}", key=f"class_{cls}")
+        class_names[int(cls)] = name
+    
+    # Store class names in session state
+    st.session_state['class_names'] = class_names
 
 elif dataset_source == "Fake News":
     # Load and initialize model if not already done
@@ -343,6 +487,10 @@ elif dataset_source == "Fake News":
                 X_scaled = st.session_state.scaler.fit_transform(data.data)
                 X_scaled = X_scaled.astype(np.float32)
                 y = data.target.astype(np.int32)
+                
+                # Ensure arrays are numpy arrays
+                X_scaled = np.array(X_scaled, dtype=np.float32)
+                y = np.array(y, dtype=np.int32)
                 
                 # Split and train
                 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
@@ -442,12 +590,26 @@ elif dataset_source == "Fake News":
             # Transform text
             input_features = vectorizer.transform([combined_text]).toarray()
             
-            # Scale features
-            input_scaled = st.session_state.scaler.transform(input_features)
+            # Use the scaler from session state, or handle the case when it's not available
+            if 'scaler' in st.session_state:
+                input_scaled = st.session_state['scaler'].transform(input_features)
+            else:
+                st.error("Model scaler not found. Please retrain the model first.")
+                st.stop()
             
             # Make prediction using PyTorch model
             prediction = model.predict(input_scaled)[0]
             prediction_proba = model.predict_proba(input_scaled)[0]
+            
+            # Convert prediction back to original label if label encoder exists
+            display_prediction = prediction
+            if 'label_encoder' in st.session_state:
+                display_prediction = st.session_state['label_encoder'].inverse_transform([prediction])[0]
+            
+            # Get class meaning if available
+            class_meaning = ""
+            if 'class_names' in st.session_state and prediction in st.session_state['class_names']:
+                class_meaning = st.session_state['class_names'][prediction]
             
             # Create a more detailed analysis card
             st.write("---")
@@ -531,6 +693,9 @@ elif dataset_source == "Fake News":
                 for indicator, color in indicators:
                     st.markdown(f"<span style='color: {color}'>{indicator}</span>", unsafe_allow_html=True)
 
+            # Add class meaning explanation
+            st.info(f"**Class Interpretation**: The prediction '{display_prediction}' represents '{class_meaning}'")
+
         except Exception as e:
             st.error(f"Error during prediction: {str(e)}")
             st.write("Debug: Exception details:", type(e).__name__, str(e))
@@ -549,8 +714,11 @@ else:
     The app will automatically:
     ✓ Handle missing values
     ✓ Remove outliers
-    ✓ Convert data types
+    ✓ Convert categorical features to numeric
     ✓ Normalize features
+    
+    **Categorical Data Support:**
+    This app handles categorical features by converting them to numeric values using label encoding.
     """)
     
     uploaded_file = st.sidebar.file_uploader("Choose a file", type=["csv", "xlsx", "xls"])
@@ -568,57 +736,63 @@ else:
             # Store original shape for reporting
             original_shape = df.shape
             
-            with st.spinner("🔄 Processing data..."):
+            # Process the dataset
+            with st.spinner("Processing uploaded dataset..."):
+                # Display a progress bar
                 progress_bar = st.progress(0)
                 
-                # 1. Quick check for data types and missing values (10%)
-                numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
-                categorical_cols = df.select_dtypes(include=['object']).columns
-                missing_before = df.isnull().sum().sum()
-                progress_bar.progress(10)
+                # 1. Basic info and extraction (20%)
+                X = df.iloc[:, :-1]  # All columns except the last one
+                y = df.iloc[:, -1]   # Last column as target
+                progress_bar.progress(20)
                 
-                # 2. Batch process missing values (30%)
-                if missing_before > 0:
-                    # Process all numeric columns at once
-                    if len(numeric_cols) > 0:
-                        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
-                    
-                    # Process all categorical columns at once
-                    if len(categorical_cols) > 0:
-                        df[categorical_cols] = df[categorical_cols].fillna(df[categorical_cols].mode().iloc[0])
+                # 2. Handling missing values (40%)
+                missing_before = X.isna().sum().sum()
                 
-                progress_bar.progress(30)
+                # Handle numeric and categorical columns separately for missing values
+                numeric_cols = X.select_dtypes(include=['number']).columns
+                if not numeric_cols.empty:
+                    X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].median())
                 
-                # 3. Efficient outlier handling (60%)
-                if len(numeric_cols) > 0:
-                    # Calculate all statistics at once
-                    Q1 = df[numeric_cols].quantile(0.25)
-                    Q3 = df[numeric_cols].quantile(0.75)
+                categorical_cols = X.select_dtypes(exclude=['number']).columns
+                if not categorical_cols.empty:
+                    for col in categorical_cols:
+                        X[col] = X[col].fillna(X[col].mode().iloc[0])
+                
+                progress_bar.progress(40)
+                
+                # 3. Removing outliers - only for numeric columns (60%)
+                if not numeric_cols.empty:
+                    Q1 = X[numeric_cols].quantile(0.25)
+                    Q3 = X[numeric_cols].quantile(0.75)
                     IQR = Q3 - Q1
-                    lower_bounds = Q1 - 1.5 * IQR
-                    upper_bounds = Q3 + 1.5 * IQR
                     
-                    # Clip all columns at once
-                    df[numeric_cols] = df[numeric_cols].clip(lower_bounds, upper_bounds, axis=1)
+                    # Create a mask for non-outlier rows
+                    outlier_mask = ~((X[numeric_cols] < (Q1 - 3 * IQR)) | (X[numeric_cols] > (Q3 + 3 * IQR))).any(axis=1)
+                    X = X[outlier_mask]
+                    y = y[outlier_mask]
                 
                 progress_bar.progress(60)
                 
-                # 4. Optimize type conversion (90%)
-                X = df.iloc[:, :-1]
-                y = df.iloc[:, -1]
+                # 4. Type conversion - process each categorical column individually (80%)
+                # Convert non-numeric columns using LabelEncoder
+                non_numeric_cols = X.select_dtypes(exclude=['number']).columns.tolist()
                 
-                # Batch process numeric conversion
-                non_numeric_cols = X.select_dtypes(exclude=['int64', 'float64']).columns
                 if len(non_numeric_cols) > 0:
-                    le = LabelEncoder()
                     for col in non_numeric_cols:
+                        le = LabelEncoder()
                         X[col] = le.fit_transform(X[col].astype(str))
                 
                 # Handle target variable
                 if not pd.api.types.is_numeric_dtype(y):
-                    unique_labels = y.unique()
-                    label_map = {label: idx for idx, label in enumerate(unique_labels)}
-                    y = y.map(label_map)
+                    try:
+                        # Try to convert directly if it contains numeric strings
+                        y = pd.to_numeric(y, errors='raise')
+                    except:
+                        # Otherwise use label encoding
+                        unique_labels = y.unique()
+                        label_map = {label: idx for idx, label in enumerate(unique_labels)}
+                        y = y.map(label_map)
                 
                 progress_bar.progress(90)
                 
@@ -650,7 +824,40 @@ else:
                 filename=uploaded_file.name
             )
             
-            st.sidebar.success("✅ Data processed successfully")
+            # Fit and store scaler in session state
+            scaler = StandardScaler()
+            scaler.fit(X)
+            st.session_state['scaler'] = scaler
+            
+            # Show success message with dataset information
+            st.sidebar.success(f"""
+            Model initialized successfully:
+            - Features: {X.shape[1]}
+            - Samples: {X.shape[0]}
+            - Classes: {', '.join([str(c) for c in np.unique(y)])}
+            """)
+
+            # Get suggested class names based on dataset patterns
+            suggested_class_names, suggestion_reason = suggest_class_names(df, uploaded_file.name)
+            
+            # Allow users to provide class names with suggestions
+            st.sidebar.write("📝 **Define Class Names for Better Interpretability**")
+            st.sidebar.info(f"{suggestion_reason}")
+            
+            class_names = {}
+            for cls in np.unique(y):
+                cls_int = int(cls) if isinstance(cls, (int, np.integer)) else cls
+                suggested_name = suggested_class_names.get(cls_int, f"Class {cls_int}")
+                name = st.sidebar.text_input(
+                    f"Name for Class {cls}:",
+                    value=suggested_name,
+                    key=f"class_{cls}",
+                    help=f"Suggested name based on dataset analysis: {suggested_name}"
+                )
+                class_names[cls_int] = name
+            
+            # Store class names in session state
+            st.session_state['class_names'] = class_names
 
             # Dataset Visualization Section
             st.write("---")
@@ -762,6 +969,8 @@ else:
             Please ensure your dataset:
             1. Is in CSV or Excel format
             2. Has the target variable in the last column
+            3. Categorical features are properly formatted (the app will automatically encode them)
+            4. There are no corrupt or incompatible data entries
             """)
             st.stop()
     else:
@@ -903,6 +1112,13 @@ class TorchMLP(torch.nn.Module):
 
     def predict(self, X):
         """Predict class labels"""
+        # Convert to numpy array if X is a pandas DataFrame/Series
+        if hasattr(X, 'values'):
+            X = X.values
+        
+        # Ensure array is of correct type
+        X = np.array(X, dtype=np.float32)
+        
         self.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X).to(device)
@@ -912,6 +1128,13 @@ class TorchMLP(torch.nn.Module):
 
     def predict_proba(self, X):
         """Predict class probabilities"""
+        # Convert to numpy array if X is a pandas DataFrame/Series
+        if hasattr(X, 'values'):
+            X = X.values
+        
+        # Ensure array is of correct type
+        X = np.array(X, dtype=np.float32)
+        
         self.eval()
         with torch.no_grad():
             X_tensor = torch.FloatTensor(X).to(device)
@@ -920,6 +1143,16 @@ class TorchMLP(torch.nn.Module):
 
 # Modified training function with loss tracking
 def train_torch_model(X_train, y_train, hidden_layers, num_epochs=100, batch_size=32):
+    # Convert data to numpy arrays if they are pandas Series/DataFrame
+    if hasattr(X_train, 'values'):
+        X_train = X_train.values
+    if hasattr(y_train, 'values'):
+        y_train = y_train.values
+    
+    # Ensure arrays are of correct type
+    X_train = np.array(X_train, dtype=np.float32)
+    y_train = np.array(y_train, dtype=np.int64)
+    
     # Convert data to PyTorch tensors
     X_train_tensor = torch.FloatTensor(X_train).to(device)
     y_train_tensor = torch.LongTensor(y_train).to(device)
@@ -1010,6 +1243,13 @@ def train_torch_model(X_train, y_train, hidden_layers, num_epochs=100, batch_siz
 
 # Modified prediction function
 def predict_torch(model, X):
+    # Convert to numpy array if X is a pandas DataFrame/Series
+    if hasattr(X, 'values'):
+        X = X.values
+    
+    # Ensure array is of correct type
+    X = np.array(X, dtype=np.float32)
+    
     model.eval()
     with torch.no_grad():
         X_tensor = torch.FloatTensor(X).to(device)
@@ -1097,20 +1337,23 @@ def visualize_torch_network(model, num_features, hidden_layers, num_classes):
     
     return dot
 
-# 3. Preprocessing & Training
+# Preprocessing for model training
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 X_scaled = X_scaled.astype(np.float32)
 
-# Handle categorical target variables
-if not np.issubdtype(y.dtype, np.number):
-    if 'label_encoder' not in st.session_state:
-        st.session_state.label_encoder = LabelEncoder()
-    y = st.session_state.label_encoder.fit_transform(y)
+# Store the fitted scaler in session state for later use
+st.session_state['scaler'] = scaler
 
-# Convert to int32 after ensuring numeric
-y = y.astype(np.int32)
+# Ensure X_scaled and y are proper numpy arrays before splitting
+if hasattr(X_scaled, 'values'):
+    X_scaled = X_scaled.values
+if hasattr(y, 'values'):
+    y = y.values
+X_scaled = np.array(X_scaled, dtype=np.float32)
+y = np.array(y, dtype=np.int32)
 
+# Split the data
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
 # Train PyTorch model
@@ -1129,6 +1372,22 @@ st.session_state['y_test'] = y_test
 st.session_state['num_features'] = num_features
 st.session_state['hidden_layers'] = hidden_layers
 st.session_state['num_classes'] = num_classes
+
+# Store class names/meanings for interpretability
+if hasattr(data, 'target_names') and len(data.target_names) > 0:
+    st.session_state['class_names'] = {i: name for i, name in enumerate(data.target_names)}
+elif dataset_source == "Built-in":
+    if dataset_name == "Breast Cancer":
+        st.session_state['class_names'] = {0: "Malignant", 1: "Benign"}
+    elif dataset_name == "Iris":
+        st.session_state['class_names'] = {0: "Setosa", 1: "Versicolor", 2: "Virginica"}
+    elif dataset_name == "Wine":
+        st.session_state['class_names'] = {0: "Wine Type 1", 1: "Wine Type 2", 2: "Wine Type 3"}
+elif dataset_source == "Fake News":
+    st.session_state['class_names'] = {0: "Real News", 1: "Fake News"}
+else:
+    # For custom datasets, use class indices with generic labels
+    st.session_state['class_names'] = {i: f"Class {i}" for i in range(num_classes)}
 
 # Display basic model performance
 st.header("📊 Model Performance")
@@ -1340,12 +1599,26 @@ if prediction_mode == "✨ Quick Predict (Use Sliders)":
                 vectorizer = st.session_state['vectorizer']
                 input_features = vectorizer.transform([combined_text]).toarray()
                 
-                # Scale features
-                input_scaled = st.session_state.scaler.transform(input_features)
+                # Use the scaler from session state, or handle the case when it's not available
+                if 'scaler' in st.session_state:
+                    input_scaled = st.session_state['scaler'].transform(input_features)
+                else:
+                    st.error("Model scaler not found. Please retrain the model first.")
+                    st.stop()
                 
                 # Make prediction using PyTorch model
                 prediction = model.predict(input_scaled)[0]
                 prediction_proba = model.predict_proba(input_scaled)[0]
+                
+                # Convert prediction back to original label if label encoder exists
+                display_prediction = prediction
+                if 'label_encoder' in st.session_state:
+                    display_prediction = st.session_state['label_encoder'].inverse_transform([prediction])[0]
+                
+                # Get class meaning if available
+                class_meaning = ""
+                if 'class_names' in st.session_state and prediction in st.session_state['class_names']:
+                    class_meaning = st.session_state['class_names'][prediction]
                 
                 # Create a more detailed analysis card
                 st.write("---")
@@ -1429,6 +1702,9 @@ if prediction_mode == "✨ Quick Predict (Use Sliders)":
                     for indicator, color in indicators:
                         st.markdown(f"<span style='color: {color}'>{indicator}</span>", unsafe_allow_html=True)
 
+                # Add class meaning explanation
+                st.info(f"**Class Interpretation**: The prediction '{display_prediction}' represents '{class_meaning}'")
+
             except Exception as e:
                 st.error(f"Error during prediction: {str(e)}")
                 st.write("Debug: Exception details:", type(e).__name__, str(e))
@@ -1491,7 +1767,13 @@ if prediction_mode == "✨ Quick Predict (Use Sliders)":
                 with st.spinner("Calculating prediction..."):
                     # Create input array
                     input_array = np.array([input_values[f] for f in X.columns]).reshape(1, -1)
-                    input_scaled = st.session_state.scaler.transform(input_array)
+                    
+                    # Use the scaler from session state, or handle the case when it's not available
+                    if 'scaler' in st.session_state:
+                        input_scaled = st.session_state['scaler'].transform(input_array)
+                    else:
+                        st.error("Model scaler not found. Please retrain the model first.")
+                        st.stop()
                     
                     # Make prediction
                     prediction = model.predict(input_scaled)[0]
@@ -1502,33 +1784,61 @@ if prediction_mode == "✨ Quick Predict (Use Sliders)":
                     if 'label_encoder' in st.session_state:
                         display_prediction = st.session_state['label_encoder'].inverse_transform([prediction])[0]
                     
+                    # Get class meaning if available
+                    class_meaning = ""
+                    if 'class_names' in st.session_state and prediction in st.session_state['class_names']:
+                        class_meaning = st.session_state['class_names'][prediction]
+                    
                     # Show prediction with confidence
                     max_prob = max(prediction_proba)
                     st.metric(
                         "Predicted Class",
-                        f"{display_prediction}",
+                        f"{display_prediction} ({class_meaning})" if class_meaning else f"{display_prediction}",
                         f"Confidence: {max_prob:.1%}"
                     )
                     
-                    # Probability distribution
+                    # Add class meaning explanation
+                    st.info(f"**Class Interpretation**: The prediction '{display_prediction}' represents '{class_meaning}'")
+                    
+                    # Probability distribution with class meanings
                     fig = plt.figure(figsize=(8, 3))
+                    
+                    # Get x-labels with class meanings
+                    x_labels = []
+                    for i in range(len(prediction_proba)):
+                        if 'class_names' in st.session_state and i in st.session_state['class_names']:
+                            x_labels.append(f"{i}\n({st.session_state['class_names'][i]})")
+                        else:
+                            x_labels.append(f"{i}")
+                            
                     plt.bar(range(len(prediction_proba)), prediction_proba, 
                            color=['#ff9999' if i != prediction else '#99ff99' for i in range(len(prediction_proba))])
                     plt.title("Prediction Confidence")
                     plt.xlabel("Class")
                     plt.ylabel("Probability")
-                    plt.xticks(range(len(prediction_proba)))
+                    plt.xticks(range(len(prediction_proba)), x_labels)
                     st.pyplot(fig)
                     plt.close()
                     
                     # Calculate feature importance
                     with st.spinner("Calculating feature importance..."):
-                        background_samples = min(50, len(X_train))
-                        background_data = shap.sample(X_train, background_samples)
-                        explainer = shap.KernelExplainer(model.predict_proba, background_data)
-                        shap_values = explainer.shap_values(input_scaled, nsamples=100)
-                        
                         try:
+                            # Limit the number of background samples for better performance
+                            background_samples = min(50, len(X_train))
+                            # Use fewer samples for high-dimensional data
+                            if X_train.shape[1] > 100:
+                                n_shap_samples = 50
+                            else:
+                                n_shap_samples = 100
+                                
+                            # Create explainer with smaller sample size
+                            background_data = shap.sample(X_train, background_samples)
+                            explainer = shap.KernelExplainer(model.predict_proba, background_data)
+                            
+                            # Get SHAP values with reduced computation for large feature sets
+                            shap_values = explainer.shap_values(input_scaled, nsamples=n_shap_samples)
+                            
+                            # Process SHAP values based on their structure
                             if isinstance(shap_values, list):
                                 all_shap = np.array(shap_values)
                                 feature_importance = np.mean(np.abs(all_shap), axis=0)[0]
@@ -1562,11 +1872,11 @@ if prediction_mode == "✨ Quick Predict (Use Sliders)":
                                 st.pyplot(fig)
                                 plt.close()
                             else:
-                                st.warning("Unable to calculate detailed feature importance due to dimensionality mismatch.")
-                                st.write(f"Prediction made with confidence: {max(prediction_proba):.1%}")
+                                st.warning("Feature importance calculation produced mismatched dimensions.")
+                                st.info(f"Your model has made a prediction with {max(prediction_proba):.1%} confidence.")
                         except Exception as e:
-                            st.warning("Unable to calculate detailed feature importance.")
-                            st.write(f"Prediction made with confidence: {max(prediction_proba):.1%}")
+                            st.warning(f"Unable to calculate detailed feature importance: {type(e).__name__}")
+                            st.info(f"This can happen with complex datasets. Your model has made a prediction with {max(prediction_proba):.1%} confidence.")
 
 else:  # Batch Predict mode
     st.subheader("Batch Predictions")
@@ -1600,6 +1910,18 @@ else:  # Batch Predict mode
                     'Correct': y_true == y_pred
                 })
                 
+                # Add class meaning columns
+                if 'class_names' in st.session_state:
+                    results_df['True Class Meaning'] = results_df['True Class'].apply(
+                        lambda x: st.session_state['class_names'].get(x, f"Class {x}")
+                    )
+                    results_df['Predicted Meaning'] = results_df['Predicted'].apply(
+                        lambda x: st.session_state['class_names'].get(x, f"Class {x}")
+                    )
+                    
+                    # Reorder columns
+                    results_df = results_df[['True Class', 'True Class Meaning', 'Predicted', 'Predicted Meaning', 'Confidence', 'Correct']]
+                
                 # Style the DataFrame
                 def color_correct(val):
                     return 'background-color: #99ff99' if val else 'background-color: #ff9999'
@@ -1615,7 +1937,15 @@ else:  # Batch Predict mode
         if 'y_pred' in locals():
             fig, ax = plt.subplots(figsize=(8, 6))
             cm = confusion_matrix(y_true, y_pred)
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+            
+            # Create labels with class meanings if available
+            if 'class_names' in st.session_state:
+                labels = [f"{i}\n({st.session_state['class_names'].get(i, f'Class {i}')})" 
+                          for i in range(len(np.unique(np.concatenate([y_true, y_pred]))))]
+            else:
+                labels = range(len(np.unique(np.concatenate([y_true, y_pred]))))
+                
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
             plt.title('Confusion Matrix')
             plt.xlabel('Predicted')
             plt.ylabel('True')
